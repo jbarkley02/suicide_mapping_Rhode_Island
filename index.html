@@ -5,330 +5,452 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>RI Suicide Dashboard (Towns)</title>
 
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- CSV parser + color scale -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js"></script>
 
   <style>
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    #wrap { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
-    #sidebar { padding: 14px; border-right: 1px solid #ddd; overflow: auto; }
-    #map { height: 100vh; }
-    .title { font-weight: 800; font-size: 16px; margin-bottom: 6px; }
-    .small { font-size: 12px; color: #555; line-height: 1.35; }
-    label { display: block; font-size: 12px; color: #444; margin: 12px 0 6px; }
-    select { width: 100%; padding: 8px; }
-    .legend { margin-top: 14px; font-size: 12px; }
-    .swatch { display:inline-block; width:14px; height:14px; vertical-align:middle; margin-right:8px; border:1px solid #999; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    #wrap { display:grid; grid-template-columns:360px 1fr; height:100vh; }
+    #sidebar { padding:14px; border-right:1px solid #ddd; overflow:auto; }
+    #map { height:100vh; }
+    .title { font-weight:800; font-size:16px; margin-bottom:6px; }
+    .small { font-size:12px; color:#555; line-height:1.35; }
+    label { display:block; font-size:12px; color:#444; margin:12px 0 6px; }
+    select { width:100%; padding:8px; }
+    .legend { margin-top:14px; font-size:12px; }
+    .row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+    .swatch { width:14px; height:14px; border:1px solid #999; flex:0 0 auto; display:inline-block; }
+
+    /* Legend hatch: bottom-left -> top-right */
+    .swatch.hatch {
+      background: repeating-linear-gradient(
+        -45deg,
+        #b0b0b0 0px,
+        #b0b0b0 2px,
+        #f2f2f2 2px,
+        #f2f2f2 6px
+      );
+    }
+
     .pill { display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px; margin-top:10px; }
-    .note { margin-top: 12px; padding: 10px; background: #f7f7f7; border: 1px solid #eee; border-radius: 10px; }
-    .hr { height:1px; background:#eee; margin: 12px 0; }
   </style>
 </head>
 
 <body>
-  <div id="wrap">
-    <div id="sidebar">
-      <div class="title">RI Suicide Deaths — Town Dashboard</div>
-      <div class="small">
-        Interactive choropleth by municipality (zoom/pan + popups). Select a time period and metric.
-      </div>
-
-      <label for="period">Time period</label>
-      <select id="period">
-        <option value="2014_2018">2014–2018</option>
-        <option value="2019_2023">2019–2023</option>
-        <option value="2014_2024">2014–2024</option>
-      </select>
-
-      <label for="metric">Color by</label>
-      <select id="metric"></select>
-
-      <div class="legend" id="legend"></div>
-
-      <div class="pill" id="status">Loading…</div>
-
-      <div class="note small">
-        <b>Notes</b><br/>
-        • Gray = missing / suppressed / non-numeric values<br/>
-        • Rates come from your <code>*_SUP</code> columns; non-numeric entries are treated as suppressed
-      </div>
-
-      <div class="hr"></div>
-      <div class="small">
-        File expectations (same folder as this index.html):<br/>
-        • <code>RI_municipalities.geojson</code> (town field: <code>MUNI</code>)<br/>
-        • <code>suicide_city_summary.csv</code> (town field: <code>CITY</code>)
-      </div>
+<div id="wrap">
+  <div id="sidebar">
+    <div class="title">Rhode Island Suicide Cases Dashboard</div>
+    <div class="small">
+      Suppressed <b>rates</b> are shown as <b>grey hatched</b>. Cases <b>&lt;5</b> are <b>very light blue</b>.<br/><br/>
+      * — Rate is reported but should be interpreted with caution per RIDOH's small number reporting policy as the relative standard error is between 20% and 30%.
     </div>
 
-    <div id="map"></div>
+    <label for="period">Time period</label>
+    <select id="period"></select>
+
+    <label for="metric">Color by</label>
+    <select id="metric"></select>
+
+    <div id="legend" class="legend"></div>
+    <div id="status" class="pill">Loading…</div>
   </div>
 
+  <div id="map"></div>
+</div>
+
 <script>
-(async function () {
-  // =========================
-  // CONFIG (your filenames)
-  // =========================
+(async () => {
+  // Files (must be in same folder as this HTML unless you change these paths)
   const GEOJSON_URL = "./RI_municipalities.geojson";
   const CSV_URL = "./suicide_city_summary.csv";
 
-  // Join keys: GeoJSON "MUNI" <-> CSV "CITY"
-  const GEO_TOWN_NAME_FIELD = "MUNI";
-  const GEO_JOIN_FIELD = "MUNI";
-  const CSV_JOIN_FIELD = "CITY";
+  // Join fields (change ONLY if your file field names differ)
+  const GEO_JOIN = "MUNI";  // GeoJSON: feature.properties.MUNI
+  const CSV_JOIN = "CITY";  // CSV column: CITY
 
-  // Optional: alias known naming mismatches (add only if you see missing joins)
-  // Example: if GeoJSON says "NEW SHOREHAM" but CSV says "BLOCK ISLAND"
-  const ALIASES = {
-    // "BLOCK ISLAND": "NEW SHOREHAM"
+  // Metric definitions by PREFIX (no hardwired full column names)
+  const METRICS = {
+    inj:  { label: "Cases in municipality (INJ)", prefix: "INJ_"  },
+    res:  { label: "Cases by residence (RES)",   prefix: "RES_"  },
+    rate: { label: "Rate per 100,000 (RES rate)", prefix: "RATE_" }
   };
 
-  // =========================
-  // COLUMN MAPPING (your headers)
-  // =========================
-  const COLUMN_MAP = {
-    inj_city: {
-      label: "Cases in municipalities (INJ)",
-      cols: {
-        "2014_2018": "INJ_CITY_2014_2018",
-        "2019_2023": "INJ_CITY_2019_2023",
-        "2014_2024": "INJ_CITY_Total"
-      },
-      // Adjust these bins if you want a different legend
-      bins: [0, 1, 5, 10, 20, 30]
-    },
-    res_city: {
-      label: "Cases for residents (RES)",
-      cols: {
-        "2014_2018": "RES_CITY_2014_2018",
-        "2019_2023": "RES_CITY_2019_2023",
-        "2014_2024": "RES_CITY_Total"
-      },
-      bins: [0, 1, 5, 10, 20, 30]
-    },
-    rate: {
-      label: "Rate per 100,000 (SUP)",
-      cols: {
-        "2014_2018": "RATE_RES_CITY_2014_2018_SUP",
-        "2019_2023": "RATE_RES_CITY_2019_2023_SUP",
-        "2014_2024": "RATE_RES_CITY_Total_SUP"
-      },
-      bins: [0, 5, 10, 15, 20, 30]
-    }
+  // Palettes
+  const CASE_COLORS = ["#edf6ff", "#c6dbef", "#9ecae1", "#6baed6", "#2171b5"];
+  const RATE_COLORS = ["url(#grey-hatch)", "#dbe9f6", "#b7d3ee", "#86b6e0", "#4f94c7", "#1f5a96"];
+
+  const BORDER_COLOR = "#999";
+  const BORDER_WEIGHT = 1;
+
+  // UI elements
+  const $period = document.getElementById("period");
+  const $metric = document.getElementById("metric");
+  const $legend = document.getElementById("legend");
+  const $status = document.getElementById("status");
+
+  // Metric dropdown
+  for (const k of Object.keys(METRICS)) {
+    const opt = document.createElement("option");
+    opt.value = k;
+    opt.textContent = METRICS[k].label;
+    $metric.appendChild(opt);
+  }
+  $metric.value = "rate";
+
+  // Helpers
+  const norm = v => String(v ?? "").toUpperCase().trim();
+
+  function toNumberClean(raw) {
+    if (raw == null) return NaN;
+    const s = String(raw).trim();
+    if (!s) return NaN;
+    return Number(s.replace(/[^0-9.\-]/g, "")); // strips "*" etc
+  }
+
+  function isSuppRate(raw) {
+    // Treat non-numeric, empty, 0, or text like "Suppressed" as suppressed
+    const n = toNumberClean(raw);
+    return (!Number.isFinite(n) || n === 0);
+  }
+
+  function rateBin(raw) {
+    if (isSuppRate(raw)) return 0; // hatch
+    const n = toNumberClean(raw);
+    if (n > 0 && n <= 8.0) return 1;
+    if (n > 8.0 && n <= 9.9) return 2;
+    if (n >= 10.0 && n <= 11.0) return 3;
+    if (n > 11.0 && n <= 13.0) return 4;
+    return 5;
+  }
+
+  function caseBin(isCombined, v) {
+    if (v == null) return null;
+    if (isCombined) return v < 5 ? 0 : v <= 25 ? 1 : v <= 40 ? 2 : v <= 60 ? 3 : 4;
+    return v < 5 ? 0 : v <= 10 ? 1 : v <= 20 ? 2 : v <= 40 ? 3 : 4;
+  }
+
+  const caseLabels = isCombined =>
+    isCombined ? ["<5","5–25","26–40","41–60","Over 60"] : ["<5","5–10","11–20","21–40","Over 40"];
+  const rateLabels = ["Suppressed","0–8.0","8.1–9.9","10.0–11.0","11.0–13.00","Over 13"];
+
+  const fmtCase = raw => {
+    if (raw == null) return "—";
+    const s = String(raw).trim();
+    if (!s) return "—";
+    if (s === "<5") return "<5";
+    const n = Number(s);
+    return Number.isFinite(n) ? n.toFixed(0) : "—";
   };
 
-  // Popup extras
-  const POP_COLS = {
-    population: {
-      label: "RI DLT 2020 Pop",
-      cols: {
-        "2014_2018": "RI_DLT_2020_POP",
-        "2019_2023": "RI_DLT_2020_POP",
-        "2014_2024": "RI_DLT_2020_POP"
+  const fmtRate = raw => {
+    const n = toNumberClean(raw);
+    if (!Number.isFinite(n) || n === 0) return "Suppressed";
+    return n.toFixed(1);
+  };
+
+  // ---- Years detection
+  function extractPeriods(headers) {
+    const rx = /_(\d{4})_(\d{4})(?:_|$)/;
+    const map = new Map();
+    for (const h of headers) {
+      const m = String(h).match(rx);
+      if (m) {
+        const start = Number(m[1]), end = Number(m[2]);
+        map.set(`${start}_${end}`, { start, end });
       }
     }
-  };
-
-  // =========================
-  // Helpers
-  // =========================
-  function normTown(s) {
-    const t = String(s ?? "")
-      .toUpperCase()
-      .trim()
-      .replace(/\./g, "")
-      .replace(/'/g, "")
-      .replace(/\s+/g, " ");
-    return ALIASES[t] ?? t;
+    return Array.from(map.entries())
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a,b) => (a.start-b.start) || (a.end-b.end));
   }
 
-  function safeNumber(v) {
-    if (v === "" || v == null) return null;
-    const num = Number(v);
-    return Number.isFinite(num) ? num : null; // "Suppressed" -> null
+  // Select metric column for a period
+  function pickMetricCol(headers, prefix, periodKey) {
+    const want = `_${periodKey}`; // e.g. "_2014_2018"
+    const upPrefix = prefix.toUpperCase();
+
+    let cands = headers.filter(h =>
+      String(h).toUpperCase().startsWith(upPrefix) && String(h).includes(want)
+    );
+    if (!cands.length) return null;
+
+    // For rate, prefer columns that include "_SUP"
+    if (upPrefix === "RATE_") {
+      const sup = cands.filter(h => /_SUP\b/i.test(String(h)) || /\bSUP\b/i.test(String(h)));
+      if (sup.length) cands = sup;
+    }
+
+    cands.sort((a,b) => b.length - a.length);
+    return cands[0];
   }
 
-  function fmtInt(v) {
-    return (v == null) ? "—" : Number(v).toFixed(0);
+  // Combined: prefer Total columns
+  function pickCombinedMetricCol(headers, prefix, combinedKey) {
+    const upPrefix = prefix.toUpperCase();
+    let cands = headers.filter(h => String(h).toUpperCase().startsWith(upPrefix));
+
+    let total = cands.filter(h => /\bTotal\b/i.test(String(h)) || /_Total\b/i.test(String(h)));
+    if (total.length) cands = total;
+    else {
+      const want = `_${combinedKey}`;
+      const comb = cands.filter(h => String(h).includes(want));
+      if (comb.length) cands = comb;
+    }
+
+    if (!cands.length) return null;
+
+    if (upPrefix === "RATE_") {
+      const sup = cands.filter(h => /_SUP\b/i.test(String(h)) || /\bSUP\b/i.test(String(h)));
+      if (sup.length) cands = sup;
+    }
+
+    cands.sort((a,b) => b.length - a.length);
+    return cands[0];
   }
 
-  function fmtRate(v) {
-    return (v == null) ? "—" : Number(v).toFixed(1);
+  // Suppress flag column for a period: starts with Suppress_, includes _YYYY_YYYY
+  function pickSuppressCol(headers, periodKey) {
+    const want = `_${periodKey}`;
+    let cands = headers.filter(h => /^Suppress_/i.test(String(h)) && String(h).includes(want));
+    if (!cands.length) return null;
+
+    const rateLike = cands.filter(h => /\bRate\b/i.test(String(h)));
+    if (rateLike.length) cands = rateLike;
+
+    cands.sort((a,b) => b.length - a.length);
+    return cands[0];
   }
 
-  // =========================
-  // UI setup
-  // =========================
-  const metricSel = document.getElementById("metric");
-  for (const [key, cfg] of Object.entries(COLUMN_MAP)) {
+  function pickCombinedSuppressCol(headers, combinedKey) {
+    let cands = headers.filter(h => /^Suppress_/i.test(String(h)));
+
+    let total = cands.filter(h => /\bTotal\b/i.test(String(h)) || /_Total\b/i.test(String(h)));
+    if (total.length) cands = total;
+    else {
+      const want = `_${combinedKey}`;
+      const comb = cands.filter(h => String(h).includes(want));
+      if (comb.length) cands = comb;
+    }
+
+    if (!cands.length) return null;
+
+    const rateLike = cands.filter(h => /\bRate\b/i.test(String(h)));
+    if (rateLike.length) cands = rateLike;
+
+    cands.sort((a,b) => b.length - a.length);
+    return cands[0];
+  }
+
+  // Load files
+  $status.textContent = "Loading files…";
+  const [geo, csvText] = await Promise.all([
+    fetch(GEOJSON_URL).then(r => { if(!r.ok) throw new Error("Could not load GeoJSON"); return r.json(); }),
+    fetch(CSV_URL).then(r => { if(!r.ok) throw new Error("Could not load CSV"); return r.text(); })
+  ]);
+
+  const parsed = Papa.parse(csvText, { header:true, dynamicTyping:false, skipEmptyLines:true });
+  const rows = parsed.data || [];
+  const headers = parsed.meta?.fields || (rows[0] ? Object.keys(rows[0]) : []);
+  if (!headers.length) throw new Error("CSV headers not found.");
+
+  // Periods from headers
+  const periods = extractPeriods(headers);
+  if (!periods.length) {
+    throw new Error("No periods found. Expected columns like INJ_CITY_2014_2018 etc.");
+  }
+
+  // Combined key = first start + last end
+  const first = periods[0], last = periods[periods.length - 1];
+  const combinedKey = `${first.start}_${last.end}`;
+
+  // Period dropdown
+  $period.innerHTML = "";
+  for (const p of periods) {
     const opt = document.createElement("option");
-    opt.value = key;
-    opt.textContent = cfg.label;
-    metricSel.appendChild(opt);
+    opt.value = p.key;
+    opt.textContent = `${p.start}–${p.end}`;
+    $period.appendChild(opt);
   }
-  metricSel.value = "rate";
+  const combinedOpt = document.createElement("option");
+  combinedOpt.value = combinedKey;
+  combinedOpt.textContent = `${first.start}–${last.end} (Combined time period)`;
+  $period.appendChild(combinedOpt);
+  $period.value = periods[0].key;
 
-  // =========================
-  // Load data
-  // =========================
-  const statusEl = document.getElementById("status");
-  statusEl.textContent = "Loading files…";
-
-  const geo = await fetch(GEOJSON_URL).then(r => {
-    if (!r.ok) throw new Error("Could not load GeoJSON: " + GEOJSON_URL);
-    return r.json();
-  });
-
-  const csvText = await fetch(CSV_URL).then(r => {
-    if (!r.ok) throw new Error("Could not load CSV: " + CSV_URL);
-    return r.text();
-  });
-
-  const parsed = Papa.parse(csvText, { header: true, dynamicTyping: false, skipEmptyLines: true });
-  if (parsed.errors?.length) {
-    console.warn("CSV parse warnings/errors:", parsed.errors);
-  }
-  const rows = parsed.data;
-
-  // Index CSV by normalized town
+  // Build index by town
   const dataIndex = {};
-  for (const r of rows) {
-    const key = normTown(r[CSV_JOIN_FIELD]);
+  rows.forEach(r => {
+    const key = norm(r[CSV_JOIN]);
     if (key) dataIndex[key] = r;
+  });
+
+  // Detect metric columns dynamically
+  const metricCols = {};
+  for (const mKey of Object.keys(METRICS)) {
+    metricCols[mKey] = {};
+    for (const p of periods) {
+      metricCols[mKey][p.key] = pickMetricCol(headers, METRICS[mKey].prefix, p.key);
+    }
+    metricCols[mKey][combinedKey] = pickCombinedMetricCol(headers, METRICS[mKey].prefix, combinedKey);
   }
 
-  // =========================
-  // Leaflet map
-  // =========================
-  const map = L.map("map", { zoomControl: true }).setView([41.68, -71.55], 9);
+  // Detect suppression flag columns dynamically
+  const suppressCols = {};
+  for (const p of periods) suppressCols[p.key] = pickSuppressCol(headers, p.key);
+  suppressCols[combinedKey] = pickCombinedSuppressCol(headers, combinedKey);
 
+  function getRaw(row, metricKey, periodKey) {
+    const col = metricCols?.[metricKey]?.[periodKey];
+    return col ? row?.[col] : undefined;
+  }
+
+  function rateNeedsCautionStar(row, periodKey) {
+    const col = suppressCols[periodKey];
+    if (!col) return false;
+    return Number(row?.[col]) === 2;
+  }
+
+  function fmtRateStar(row, periodKey, raw) {
+    const base = fmtRate(raw);
+    if (base === "Suppressed") return base;
+    return rateNeedsCautionStar(row, periodKey) ? (base + "*") : base;
+  }
+
+  // Map init
+  const map = L.map("map").setView([41.68, -71.55], 9);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
 
-  // Color ramp (6 classes)
-  const COLORS = chroma.scale(["#e8f0ef", "#2c6e6f"]).colors(6);
-
-  function getMetricValue(row, metricKey, periodKey) {
-    const col = COLUMN_MAP[metricKey].cols[periodKey];
-    return safeNumber(row?.[col]);
-  }
-
-  function getPopValue(row, periodKey) {
-    const col = POP_COLS.population.cols[periodKey];
-    return safeNumber(row?.[col]);
-  }
-
-  function binIndex(bins, v) {
-    for (let i = bins.length - 1; i >= 0; i--) {
-      if (v >= bins[i]) return i;
+  // SVG renderer + hatch pattern (for url(#grey-hatch))
+  const renderer = L.svg().addTo(map);
+  (function ensureHatch(r) {
+    const svg = r._container;
+    let defs = svg.querySelector("defs");
+    if (!defs) {
+      defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      svg.insertBefore(defs, svg.firstChild);
     }
-    return 0;
-  }
+    if (svg.querySelector("#grey-hatch")) return;
 
-  function styleFeature(feature) {
-    const periodKey = document.getElementById("period").value;
-    const metricKey = document.getElementById("metric").value;
+    const ns = "http://www.w3.org/2000/svg";
+    const pat = document.createElementNS(ns, "pattern");
+    pat.setAttribute("id", "grey-hatch");
+    pat.setAttribute("patternUnits", "userSpaceOnUse");
+    pat.setAttribute("width", "8");
+    pat.setAttribute("height", "8");
+    pat.setAttribute("patternTransform", "rotate(45)");
 
-    const townKey = normTown(feature.properties?.[GEO_JOIN_FIELD]);
-    const row = dataIndex[townKey];
-    const v = getMetricValue(row, metricKey, periodKey);
+    const bg = document.createElementNS(ns, "rect");
+    bg.setAttribute("width","8"); bg.setAttribute("height","8"); bg.setAttribute("fill","#f2f2f2");
 
-    // No data / suppressed -> gray
-    if (v == null) {
-      return { color: "#666", weight: 1, fillColor: "#d9d9d9", fillOpacity: 0.9 };
-    }
+    const ln = document.createElementNS(ns, "line");
+    ln.setAttribute("x1","0"); ln.setAttribute("y1","0"); ln.setAttribute("x2","0"); ln.setAttribute("y2","8");
+    ln.setAttribute("stroke","#b0b0b0"); ln.setAttribute("stroke-width","2");
 
-    const bins = COLUMN_MAP[metricKey].bins;
-    const idx = binIndex(bins, v);
-    const fill = COLORS[Math.min(idx, COLORS.length - 1)];
-    return { color: "#333", weight: 1, fillColor: fill, fillOpacity: 0.9 };
-  }
+    pat.appendChild(bg);
+    pat.appendChild(ln);
+    defs.appendChild(pat);
+  })(renderer);
 
-  function popupHTML(feature) {
-    const periodKey = document.getElementById("period").value;
-    const periodLabel = periodKey === "2014_2018" ? "2014–2018"
-                      : periodKey === "2019_2023" ? "2019–2023"
-                      : "2014–2024";
-
-    const townDisplay = feature.properties?.[GEO_TOWN_NAME_FIELD] ?? feature.properties?.[GEO_JOIN_FIELD] ?? "Unknown";
-    const townKey = normTown(feature.properties?.[GEO_JOIN_FIELD]);
-    const row = dataIndex[townKey];
-
-    if (!row) {
-      return `<b>${townDisplay}</b><br/>Period: ${periodLabel}<br/><i>No matching CSV row</i>`;
-    }
-
-    // Always show all 3 metrics in popup
-    const inj = getMetricValue(row, "inj_city", periodKey);
-    const res = getMetricValue(row, "res_city", periodKey);
-    const rate = getMetricValue(row, "rate", periodKey);
-    const pop = getPopValue(row, periodKey);
-
-    return `
-      <b>${townDisplay}</b><br/>
-      Period: ${periodLabel}<br/>
-      ${COLUMN_MAP.inj_city.label}: ${fmtInt(inj)}<br/>
-      ${COLUMN_MAP.res_city.label}: ${fmtInt(res)}<br/>
-      ${COLUMN_MAP.rate.label}: ${fmtRate(rate)}<br/>
-      ${POP_COLS.population.label}: ${pop == null ? "—" : Number(pop).toLocaleString()}
-    `;
+  function labelForPeriod(periodKey) {
+    if (periodKey === combinedKey) return `${first.start}–${last.end}`;
+    const m = periodKey.match(/^(\d{4})_(\d{4})$/);
+    return m ? `${m[1]}–${m[2]}` : periodKey;
   }
 
   function buildLegend() {
-    const metricKey = document.getElementById("metric").value;
-    const cfg = COLUMN_MAP[metricKey];
-    const bins = cfg.bins;
+    const periodKey = $period.value;
+    const metricKey = $metric.value;
+    const isCombined = (periodKey === combinedKey);
 
-    let html = `<div style="font-weight:800;margin-bottom:8px;">Legend — ${cfg.label}</div>`;
-    for (let i = 0; i < bins.length; i++) {
-      const from = bins[i];
-      const to = (i < bins.length - 1) ? bins[i + 1] : null;
-      const label = (to == null) ? `${from}+` : `${from}–${to}`;
-      const color = COLORS[Math.min(i, COLORS.length - 1)];
-      html += `<div><span class="swatch" style="background:${color}"></span>${label}</div>`;
+    let html = `<div style="font-weight:800;margin-bottom:8px;">Legend — ${METRICS[metricKey].label}</div>`;
+
+    if (metricKey === "rate") {
+      for (let i=0;i<rateLabels.length;i++) {
+        html += (i === 0)
+          ? `<div class="row"><span class="swatch hatch"></span>${rateLabels[i]}</div>`
+          : `<div class="row"><span class="swatch" style="background:${RATE_COLORS[i]}"></span>${rateLabels[i]}</div>`;
+      }
+    } else {
+      const labels = caseLabels(isCombined);
+      for (let i=0;i<labels.length;i++) {
+        html += `<div class="row"><span class="swatch" style="background:${CASE_COLORS[i]}"></span>${labels[i]}</div>`;
+      }
     }
-    html += `<div style="margin-top:8px;"><span class="swatch" style="background:#d9d9d9"></span>No data / Suppressed</div>`;
-    document.getElementById("legend").innerHTML = html;
+    $legend.innerHTML = html;
   }
 
-  // Track missing joins for your sanity
-  function computeJoinStats() {
-    const geoTowns = (geo.features || []).map(f => normTown(f.properties?.[GEO_JOIN_FIELD]));
-    const csvTowns = new Set(Object.keys(dataIndex));
-    const missing = geoTowns.filter(t => t && !csvTowns.has(t));
-    return { missingCount: missing.length, missing };
+  function styleFeature(feature) {
+    const periodKey = $period.value;
+    const metricKey = $metric.value;
+    const isCombined = (periodKey === combinedKey);
+
+    const townKey = norm(feature.properties?.[GEO_JOIN]);
+    const row = dataIndex[townKey];
+
+    if (!row) return { color:"#aaa", weight:BORDER_WEIGHT, fillColor:"#eee", fillOpacity:1 };
+
+    const raw = getRaw(row, metricKey, periodKey);
+
+    if (metricKey === "rate") {
+      const i = rateBin(raw);
+      return { color:BORDER_COLOR, weight:BORDER_WEIGHT, fillColor:RATE_COLORS[i], fillOpacity:1 };
+    }
+
+    // cases: treat "<5" as lowest bin (light blue)
+    if (String(raw).trim() === "<5") {
+      return { color:BORDER_COLOR, weight:BORDER_WEIGHT, fillColor:CASE_COLORS[0], fillOpacity:1 };
+    }
+
+    const n = Number(String(raw ?? "").trim());
+    if (!Number.isFinite(n)) return { color:"#aaa", weight:BORDER_WEIGHT, fillColor:"#eee", fillOpacity:1 };
+
+    const i = caseBin(isCombined, n);
+    return { color:BORDER_COLOR, weight:BORDER_WEIGHT, fillColor:CASE_COLORS[i], fillOpacity:1 };
+  }
+
+  function popupHTML(feature) {
+    const periodKey = $period.value;
+    const town = feature.properties?.[GEO_JOIN] ?? "Unknown";
+    const row = dataIndex[norm(town)];
+    if (!row) return `<b>${town}</b><br/><i>No matching CSV row</i>`;
+
+    const injRaw  = getRaw(row, "inj",  periodKey);
+    const resRaw  = getRaw(row, "res",  periodKey);
+    const rateRaw = getRaw(row, "rate", periodKey);
+
+    return `
+      <b>${town}</b><br/>
+      Period: ${labelForPeriod(periodKey)}<br/>
+      ${METRICS.inj.label}: ${fmtCase(injRaw)}<br/>
+      ${METRICS.res.label}: ${fmtCase(resRaw)}<br/>
+      ${METRICS.rate.label}: ${fmtRateStar(row, periodKey, rateRaw)}
+    `;
   }
 
   let layer;
   function render() {
     buildLegend();
-
     if (layer) layer.remove();
     layer = L.geoJSON(geo, {
+      renderer,
       style: styleFeature,
-      onEachFeature: (feature, lyr) => {
-        lyr.bindPopup(popupHTML(feature));
-        lyr.on("mouseover", () => lyr.setStyle({ weight: 2 }));
-        lyr.on("mouseout", () => lyr.setStyle({ weight: 1 }));
-      }
+      onEachFeature: (f, l) => l.bindPopup(popupHTML(f))
     }).addTo(map);
-
-    const { missingCount } = computeJoinStats();
-    statusEl.textContent = missingCount ? `Ready (missing joins: ${missingCount})` : "Ready";
+    $status.textContent = "Ready";
   }
 
-  document.getElementById("period").addEventListener("change", render);
-  document.getElementById("metric").addEventListener("change", render);
-
+  $period.addEventListener("change", render);
+  $metric.addEventListener("change", render);
   render();
-})();
+
+})().catch(err => {
+  console.error(err);
+  document.getElementById("status").textContent = "Error (check console)";
+});
 </script>
 </body>
 </html>

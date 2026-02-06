@@ -1,0 +1,40 @@
+﻿CITY,INJ_CITY_2015_2019,INJ_CITY_2020_2024,INJ_CITY_Total,RES_CITY_2015_2019,RES_CITY_2020_2024,RES_CITY_Total,RI_DLT_2020_POP,RATE_RES_CITY_2015_2019_SUP,RATE_RES_CITY_2020_2024_SUP,RATE_RES_CITY_Total_SUP,Suppress_2015_2019_Rate,Suppres_2020_2024_Rate,Suppress_Total_Rate
+Barrington,12,6,18,15,8,23,17153,17.5,Suppressed,13.4,2,1,0
+Bristol,16,12,28,11,6,17,22493,Suppressed,Suppressed,7.6,1,1,2
+Burrillville,5,7,12,9,9,18,16158,Suppressed,Suppressed,11.1,1,1,2
+Central Falls,5,9,14,5,10,15,22583,Suppressed,Suppressed,6.6,1,1,2
+Charlestown,9,7,16,10,7,17,7997,Suppressed,Suppressed,21.3,1,1,2
+Coventry,20,24,44,22,24,46,35688,12.3,13.4,12.9,0,0,0
+Cranston,39,40,79,40,38,78,82934,9.6,9.2,9.4,0,0,0
+Cumberland,15,14,29,15,14,29,36405,8.2,7.7,8,2,2,0
+East Greenwich,6,6,12,5,7,12,14312,Suppressed,Suppressed,8.4,1,1,2
+East Providence,22,16,38,21,16,37,47139,8.9,6.8,7.8,0,2,0
+Exeter,<5,9,13,<5,<5,5,6460,Suppressed,Suppressed,Suppressed,1,1,1
+Foster,6,6,12,5,6,11,4469,Suppressed,Suppressed,Suppressed,1,1,1
+Glocester,11,7,18,10,6,16,9974,Suppressed,Suppressed,16,1,1,2
+Hopkinton,7,6,13,7,7,14,8398,Suppressed,Suppressed,16.7,1,1,2
+Jamestown,7,12,19,<5,6,10,5559,Suppressed,Suppressed,Suppressed,1,1,1
+Johnston,20,14,34,17,16,33,29568,11.5,10.8,11.2,2,2,0
+Lincoln,13,18,31,12,14,26,22529,10.7,12.4,11.5,2,2,0
+Little Compton,<5,<5,<5,<5,<5,5,3616,Suppressed,Suppressed,Suppressed,1,1,1
+Middletown,6,5,11,<5,<5,8,17075,Suppressed,Suppressed,Suppressed,1,1,1
+Narragansett,14,10,24,12,10,22,14532,16.5,Suppressed,15.1,2,1,0
+New Shoreham,<5,<5,5,<5,<5,<5,1410,Suppressed,Suppressed,Suppressed,1,1,1
+Newport,20,17,37,15,12,27,25163,11.9,9.5,10.7,2,2,0
+North Kingstown,12,18,30,12,18,30,27732,8.7,13,10.8,2,2,0
+North Providence,21,9,30,24,9,33,34114,14.1,Suppressed,9.7,0,1,0
+North Smithfield,10,12,22,7,11,18,12588,Suppressed,Suppressed,14.3,1,1,2
+Pawtucket,33,37,70,35,41,76,75604,9.3,10.8,10.1,0,0,0
+Portsmouth,18,12,30,11,10,21,17871,Suppressed,Suppressed,11.8,1,1,0
+Providence,76,90,166,70,71,141,190934,7.3,7.4,7.4,0,0,0
+Richmond,<5,<5,6,<5,<5,7,8020,Suppressed,Suppressed,Suppressed,1,1,1
+Scituate,5,9,14,5,10,15,10384,Suppressed,Suppressed,14.4,1,1,2
+Smithfield,15,12,27,11,9,20,22118,Suppressed,Suppressed,9,1,1,0
+South Kingstown,15,13,28,11,15,26,31931,Suppressed,9.4,8.1,1,2,0
+Tiverton,11,7,18,13,7,20,16359,15.9,Suppressed,12.2,2,1,0
+Warren,9,6,15,8,8,16,11147,Suppressed,Suppressed,14.4,1,1,2
+Warwick,59,40,99,54,35,89,82823,13,8.5,10.7,0,0,0
+West Greenwich,9,5,14,7,<5,10,6528,Suppressed,Suppressed,Suppressed,1,1,1
+West Warwick,8,20,28,11,25,36,31012,Suppressed,16.1,11.6,1,0,0
+Westerly,15,18,33,13,15,28,23359,11.1,12.8,12,2,2,0
+Woonsocket,29,25,54,31,26,57,43240,14.3,12,13.2,0,0,0
